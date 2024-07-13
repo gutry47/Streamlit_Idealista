@@ -1,18 +1,58 @@
+import numpy as np
 import pandas as pd
-import pickle
-import pip
-import pydeck as pdk
-import re
-import streamlit as st
+import xgboost as xgb
+from xgboost import XGBRegressor
 import sklearn
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+import streamlit as st
 
 # Ruta al archivo CSV
 csv_file_path = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/viviendas_PROD_v2.csv'
+MOD_file_path = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/viviendas_MOD_V4.csv'
+
 # Cargar el archivo CSV en un DataFrame de pandas
 anuncios = pd.read_csv(csv_file_path, sep=",")
+df = pd.read_csv(MOD_file_path, sep=",")
 
+# Imputar los valores nulos con la mediana de cada columna (excepto las categóricas) - DF
+for col in df.select_dtypes(include=[np.number]).columns:
+    df[col].fillna(df[col].median(), inplace=True)
+
+# Imputar los valores nulos con la mediana de cada columna (excepto las categóricas) - ANUNCIOS
+for col in anuncios.select_dtypes(include=[np.number]).columns:
+    anuncios[col].fillna(anuncios[col].median(), inplace=True)
+
+# Separar la variable objetivo
+y = df['FINALPRICE_DISCOUNT']
+X = df.drop(columns=['FINALPRICE_DISCOUNT'])
+
+# Dividir en conjunto de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Crear el modelo XGBoost
+xgb_model = XGBRegressor(
+    n_estimators=150,
+    max_depth=10,
+    learning_rate=0.1,
+    random_state=42
+)
+
+# Entrenar el modelo
+xgb_model.fit(X_train, y_train)
+
+# Predecir función para obtener la recomendación de inversión
+def obtener_recomendacion_inversion(precio_original, precio_predicho):
+    if precio_predicho > precio_original:
+        return "SI"  # Inversión recomendable (verde en el mapa)
+    else:
+        return "NO"  # Mala inversión (rojo en el mapa)
+
+# Título y subtítulo
 st.title("TuTecho Search")
-st.subheader("Esta herramienta ha sido diseñada como producto personalizado de búsqueda de viviendas de potencial interés de adquisición para TuTecho")
+st.subheader(
+    "Esta herramienta ha sido diseñada como producto personalizado de búsqueda de viviendas de potencial interés de adquisición para TuTecho"
+)
 
 # Crear un panel de filtros en la barra lateral
 with st.sidebar:
@@ -23,17 +63,17 @@ with st.sidebar:
     with st.form("filter_form"):
         # Filtro por número de habitaciones
         num_habitaciones = st.selectbox(
-            "Número de habitaciones", options=[1, 2, 3, 4]
+            "Número de Habitaciones", options=[1, 2, 3, 4]
         )
 
         # Filtro por precio de alquiler
         precio_min, precio_max = st.slider(
-            "Precio de alquiler", min_value=0, max_value=3000, value=(0, 3000), step=100
+            "Precio de Alquiler", min_value=0, max_value=3000, value=(0, 3000), step=100
         )
 
         # Filtro por rentabilidad requerida
         rentabilidad_requerida = st.slider(
-            "Rentabilidad requerida (%)", min_value=3, max_value=8, value=3, step=1
+            "Rentabilidad Requerida (%)", min_value=3, max_value=8, value=3, step=1
         ) / 100
 
         # Lista de barrios (ordenada alfabéticamente)
@@ -68,31 +108,66 @@ with st.sidebar:
         # Botón para aplicar filtros
         submit_button = st.form_submit_button(label='Aplicar filtros')
 
-# Solo aplicar los filtros y actualizar el mapa si se ha presionado el botón de aplicar filtros
+# Filtrar el dataset según los filtros seleccionados y almacenarlo en el estado de la sesión
 if submit_button:
-    # Filtrar el dataset según los filtros seleccionados
-    # Filtrar por número de habitaciones
-    anuncios_filtrados = anuncios[anuncios['ROOMNUMBER'] == num_habitaciones]
+    if 'ROOMNUMBER' in anuncios.columns:
+        anuncios_filtrados = anuncios[anuncios['ROOMNUMBER'] == num_habitaciones]
 
-    # Calcular el rango de precios
-    ingresos_anuales_min = precio_min * 12
-    ingresos_anuales_max = precio_max * 12
-    gastos_anuales_min = ingresos_anuales_min * 0.6
-    gastos_anuales_max = ingresos_anuales_max * 0.6
-    finalprice_discount_min = (ingresos_anuales_min - gastos_anuales_min) / rentabilidad_requerida
-    finalprice_discount_max = (ingresos_anuales_max - gastos_anuales_max) / rentabilidad_requerida
+        ingresos_anuales_min = precio_min * 12
+        ingresos_anuales_max = precio_max * 12
+        gastos_anuales_min = ingresos_anuales_min * 0.6
+        gastos_anuales_max = ingresos_anuales_max * 0.6
+        finalprice_discount_min = (ingresos_anuales_min - gastos_anuales_min) / rentabilidad_requerida
+        finalprice_discount_max = (ingresos_anuales_max - gastos_anuales_max) / rentabilidad_requerida
 
-    # Filtrar por rango de precios
-    anuncios_filtrados = anuncios_filtrados[
-        (anuncios_filtrados['FINALPRICE_DISCOUNT'] >= finalprice_discount_min) &
-        (anuncios_filtrados['FINALPRICE_DISCOUNT'] <= finalprice_discount_max)
+        anuncios_filtrados = anuncios_filtrados[
+            (anuncios_filtrados['FINALPRICE_DISCOUNT'] >= finalprice_discount_min) &
+            (anuncios_filtrados['FINALPRICE_DISCOUNT'] <= finalprice_discount_max)
         ]
 
-    # Filtrar por barrio
-    columna_barrio = f"LOCATIONNAME_{barrio.replace(' ', '_')}"
-    if columna_barrio in anuncios_filtrados.columns:
-        anuncios_filtrados = anuncios_filtrados[anuncios_filtrados[columna_barrio] == 1]
+        columna_barrio = f"LOCATIONNAME_{barrio.replace(' ', '_')}"
+        if columna_barrio in anuncios_filtrados.columns:
+            anuncios_filtrados = anuncios_filtrados[anuncios_filtrados[columna_barrio] == 1]
 
-    # Mostrar el mapa con los puntos filtrados
-    st.write("Mapa de anuncios filtrados:")
-    st.map(anuncios_filtrados[['lat', 'lon']])
+        # Guardar en el estado de la sesión
+        st.session_state['anuncios_filtrados'] = anuncios_filtrados
+
+        # Preparar el DataFrame para la predicción
+        anuncios_prediccion = anuncios_filtrados.drop(columns=['lon', 'lat', 'ASSETID', 'FINALPRICE_DISCOUNT'])
+
+        # Realizar la predicción con el modelo XGBoost
+        predicciones = xgb_model.predict(anuncios_prediccion)
+
+        # Comparar las predicciones con los valores originales de FINALPRICE_DISCOUNT
+        anuncios_filtrados['PREDICCION_PRECIO'] = predicciones
+        anuncios_filtrados['RECOMENDACION_INVERSION'] = anuncios_filtrados.apply(
+            lambda row: obtener_recomendacion_inversion(row['FINALPRICE_DISCOUNT'], row['PREDICCION_PRECIO']),
+            axis=1
+        )
+
+        # Guardar los resultados en el estado de la sesión
+        st.session_state['anuncios_filtrados_con_prediccion'] = anuncios_filtrados
+
+# Recuperar los datos filtrados del estado de la sesión
+anuncios_filtrados_con_prediccion = st.session_state.get('anuncios_filtrados_con_prediccion')
+
+# Agregar las pestañas para mostrar el mapa y la tabla filtrada
+tabs = ["Mapa de viviendas", "Viviendas filtradas"]
+selected_tab = st.radio("Seleccionar vista", tabs)
+
+if selected_tab == "Mapa de viviendas":
+    st.header("Mapa de viviendas filtradas")
+    # Mostrar el mapa con los puntos filtrados si existe anuncios_filtrados_con_prediccion
+    if anuncios_filtrados_con_prediccion is not None and 'lat' in anuncios_filtrados_con_prediccion.columns and 'lon' in anuncios_filtrados_con_prediccion.columns:
+        for index, row in anuncios_filtrados_con_prediccion.iterrows():
+            if row['PREDICCION_PRECIO'] > row['FINALPRICE_DISCOUNT']:
+                st.map(anuncios_filtrados_con_prediccion[['lat', 'lon']], color="#4ED618")
+            else:
+                st.map(anuncios_filtrados_con_prediccion[['lat', 'lon']], color="#E62526")
+
+elif selected_tab == "Viviendas filtradas":
+    st.header("Viviendas filtradas")
+    # Mostrar las filas filtradas del dataset con una columna adicional "¿Inversión recomendable?"
+    if anuncios_filtrados_con_prediccion is not None:
+        columns_to_display = [col for col in anuncios_filtrados_con_prediccion.columns if not col.startswith('LOCATIONNAME_')]
+        st.dataframe(anuncios_filtrados_con_prediccion[columns_to_display])
