@@ -4,6 +4,8 @@ import xgboost as xgb
 from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 import streamlit as st
+import folium
+from streamlit_folium import folium_static
 
 # Ruta al archivo CSV
 csv_file_path = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/viviendas_PROD_v2.csv'
@@ -17,9 +19,9 @@ df = pd.read_csv(MOD_file_path, sep=",")
 for col in df.select_dtypes(include=[np.number]).columns:
     df[col].fillna(df[col].median(), inplace=True)
 
-# Imputar los valores nulos con la mediana de cada columna (excepto las categóricas) - ANUNCIOS
+# Imputar los valores nulos con 0 en lugar de la mediana
 for col in anuncios.select_dtypes(include=[np.number]).columns:
-    anuncios[col].fillna(anuncios[col].median(), inplace=True)
+    anuncios[col].fillna(0, inplace=True)
 
 # Separar la variable objetivo
 y = df['FINALPRICE_DISCOUNT']
@@ -113,33 +115,40 @@ if submit_button:
 
         ingresos_anuales_min = precio_min * 12
         ingresos_anuales_max = precio_max * 12
-        gastos_min_anuales = ingresos_anuales_min * (rentabilidad_requerida / 100)
-        gastos_max_anuales = ingresos_anuales_max * (rentabilidad_requerida / 100)
-        anuncios_filtrados = anuncios_filtrados[
-            (anuncios_filtrados['ROOMNUMBER'] == num_habitaciones) &
-            (anuncios_filtrados['FINALPRICE_DISCOUNT'] >= gastos_min_anuales) &
-            (anuncios_filtrados['FINALPRICE_DISCOUNT'] <= gastos_max_anuales) &
-            (anuncios_filtrados['LOCATIONNAME_'] == barrio)
-        ]
-    with st.spinner(text="Cargando datos..."):
-        anuncios_filtrados_con_prediccion = anuncios_filtrados.copy()
+        gastos_anuales_min = ingresos_anuales_min * 0.6
+        gastos_anuales_max = ingresos_anuales_max * 0.6
+        finalprice_discount_min = (ingresos_anuales_min - gastos_anuales_min) / rentabilidad_requerida
+        finalprice_discount_max = (ingresos_anuales_max - gastos_anuales_max) / rentabilidad_requerida
 
-        predicciones = xgb_model.predict(anuncios_filtrados_con_prediccion.drop(columns=['ASSETID']))
-        anuncios_filtrados_con_prediccion['PREDICCION_PRECIO'] = predicciones
-        anuncios_filtrados_con_prediccion['RECOMENDACION_INVERSION'] = anuncios_filtrados_con_prediccion.apply(
+        anuncios_filtrados = anuncios_filtrados[
+            (anuncios_filtrados['FINALPRICE_DISCOUNT'] >= finalprice_discount_min) &
+            (anuncios_filtrados['FINALPRICE_DISCOUNT'] <= finalprice_discount_max)
+        ]
+
+        columna_barrio = f"LOCATIONNAME_{barrio.replace(' ', '_')}"
+        if columna_barrio in anuncios_filtrados.columns:
+            anuncios_filtrados = anuncios_filtrados[anuncios_filtrados[columna_barrio] == 1]
+
+        # Preparar el DataFrame para la predicción
+        anuncios_prediccion = anuncios_filtrados.drop(columns=['lon', 'lat', 'ASSETID', 'FINALPRICE_DISCOUNT'])
+
+        # Realizar la predicción con el modelo XGBoost
+        predicciones = xgb_model.predict(anuncios_prediccion)
+
+        # Comparar las predicciones con los valores originales de FINALPRICE_DISCOUNT
+        anuncios_filtrados['PREDICCION_PRECIO'] = predicciones
+        anuncios_filtrados['RECOMENDACION_INVERSION'] = anuncios_filtrados.apply(
             lambda row: obtener_recomendacion_inversion(row['FINALPRICE_DISCOUNT'], row['PREDICCION_PRECIO']),
             axis=1
         )
 
-        # Renombrar columnas según lo solicitado
-        anuncios_filtrados_con_prediccion.rename(columns={
-            'FINALPRICE_DISCOUNT': 'FINALPRICE_DISCOUNT',
-            'PREDICCION_PRECIO': 'PREDICCION_PRECIO',
-            'RECOMENDACION_INVERSION': 'RECOMENDACION_INVERSION'
-        }, inplace=True)
+        # Asignar color según la recomendación de inversión
+        anuncios_filtrados['color'] = anuncios_filtrados['RECOMENDACION_INVERSION'].apply(
+            lambda x: "#25be4c" if x == "SI" else "#be2528"
+        )
 
         # Guardar los resultados en el estado de la sesión
-        st.session_state['anuncios_filtrados_con_prediccion'] = anuncios_filtrados_con_prediccion
+        st.session_state['anuncios_filtrados_con_prediccion'] = anuncios_filtrados
 
 # Recuperar los datos filtrados del estado de la sesión
 anuncios_filtrados_con_prediccion = st.session_state.get('anuncios_filtrados_con_prediccion')
@@ -152,15 +161,30 @@ if selected_tab == "Mapa de viviendas":
     st.header("Mapa de viviendas filtradas")
     # Mostrar el mapa con los puntos filtrados si existe anuncios_filtrados_con_prediccion
     if anuncios_filtrados_con_prediccion is not None and 'lat' in anuncios_filtrados_con_prediccion.columns and 'lon' in anuncios_filtrados_con_prediccion.columns:
-        # Determinar color y tamaño de los puntos según la recomendación de inversión
-        color = "#4ED618" if anuncios_filtrados_con_prediccion.iloc[0]['RECOMENDACION_INVERSION'] == "SI" else "#E62526"
-        size = 2  # Tamaño de los puntos (menos es más pequeño)
-        st.map(anuncios_filtrados_con_prediccion[['lat', 'lon']], color=color, zoom=10, use_container_width=True)
+        # Crear un mapa folium
+        mymap = folium.Map(location=[40.4165, -3.70256], zoom_start=12)
+
+        # Iterar sobre las filas del DataFrame y añadir marcadores al mapa
+        for index, row in anuncios_filtrados_con_prediccion.iterrows():
+            color = row['color']
+            folium.CircleMarker(
+                location=[row['lat'], row['lon']],
+                radius=5,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.7,
+                popup=f"Recomendación de inversión: {row['RECOMENDACION_INVERSION']}"
+            ).add_to(mymap)
+
+        # Mostrar el mapa en Streamlit
+        folium_static(mymap)
 
 elif selected_tab == "Viviendas filtradas":
     st.header("Viviendas filtradas")
     # Mostrar las filas filtradas del dataset con una columna adicional "¿Inversión recomendable?"
     if anuncios_filtrados_con_prediccion is not None:
         # Definir orden de columnas para mostrar
-        columns_to_display = ['FINALPRICE_DISCOUNT', 'PREDICCION_PRECIO', 'RECOMENDACION_INVERSION'] + [col for col in anuncios_filtrados_con_prediccion.columns if col != 'RECOMENDACION_INVERSION' and col != 'FINALPRICE_DISCOUNT' and col != 'PREDICCION_PRECIO' and not col.startswith('LOCATIONNAME_')]
-        st.dataframe(anuncios_filtrados_con_prediccion[columns_to_display].reset_index(drop=True), height=600)
+        columns_to_display = ['RECOMENDACION_INVERSION', 'FINALPRICE_DISCOUNT', 'PREDICCION_PRECIO'] + [col for col in anuncios_filtrados_con_prediccion.columns if col != 'RECOMENDACION_INVERSION' and col != 'FINALPRICE_DISCOUNT' and col != 'PREDICCION_PRECIO' and not col.startswith('LOCATIONNAME_')]
+        st.dataframe(anuncios_filtrados_con_prediccion[columns_to_display].reset_index(drop=True))
+
