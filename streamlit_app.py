@@ -212,5 +212,8 @@ elif selected_tab == "Viviendas filtradas":
         anuncios_filtrados_con_prediccion.sort_values(by=['RECOMENDACION_INVERSION', 'DIFERENCIA_PORCENTUAL'], ascending=[False, False], inplace=True)
 
         # Definir orden de columnas para mostrar
-        columns_to_display = ['RECOMENDACION_INVERSION', 'FINALPRICE_DISCOUNT', 'PREDICCION_PRECIO'] + [col for col in anuncios_filtrados_con_prediccion.columns if col != 'RECOMENDACION_INVERSION' and col != 'FINALPRICE_DISCOUNT' and col != 'PREDICCION_PRECIO' and not col.startswith('LOCATIONNAME_')]
+        columns_to_display = ['RECOMENDACION_INVERSION', 'FINALPRICE_DISCOUNT', 'PREDICCION_PRECIO', 'ROOMNUMBER',
+                              'BATHNUMBER', 'CADCONSTRUCTIONYEAR', 'CONSTRUCTEDAREA', 'DISTANCE_TO_METRO',
+                              'DISTANCE_TO_CASTELLANA', 'DISTANCE_TO_CITY_CENTER']
+
         st.dataframe(anuncios_filtrados_con_prediccion[columns_to_display].reset_index(drop=True))
