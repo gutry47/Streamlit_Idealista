@@ -1,15 +1,17 @@
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 import streamlit as st
 import folium
 from streamlit_folium import folium_static
+from sklearn.ensemble import RandomForestRegressor
 
 # Ruta al archivo CSV
 csv_file_path = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/viviendas_PROD_v2.csv'
 MOD_file_path = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/viviendas_MOD_V4.csv'
+tutecho = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/tutecho.png'
+idealista = 'C:/Users/amarz/PycharmProjects/Streamlit_Idealista/data/idealista.png'
 
 # Cargar el archivo CSV en un DataFrame de pandas
 anuncios = pd.read_csv(csv_file_path, sep=",")
@@ -41,7 +43,7 @@ xgb_model = XGBRegressor(
     random_state=42
 )
 
-# Entrenar el modelo
+# Entrenar el modelo XGB y RF
 xgb_model.fit(X_train, y_train)
 
 # Predecir función para obtener la recomendación de inversión
@@ -54,12 +56,15 @@ def obtener_recomendacion_inversion(precio_original, precio_predicho):
 # Título y subtítulo
 st.title("TuTecho Search")
 st.markdown(
-    '<p style="font-size:18px">Esta herramienta ha sido diseñada como producto personalizado de búsqueda de viviendas de potencial interés de adquisición para TuTecho</p>',
+    '<p style="font-size:16px">Esta herramienta ha sido diseñada como herramienta personalizada de búsqueda de viviendas de potencial interés de adquisición para TuTecho</p>',
     unsafe_allow_html=True
 )
 
 # Crear un panel de filtros en la barra lateral
 with st.sidebar:
+    st.image(tutecho, width=80)
+    st.image(idealista, width=80)
+
     st.header("Búsqueda de viviendas")
     st.markdown("### Filtros")
 
@@ -119,8 +124,8 @@ if submit_button:
 
         ingresos_anuales_min = precio_min * 12
         ingresos_anuales_max = precio_max * 12
-        gastos_anuales_min = ingresos_anuales_min * 0.6
-        gastos_anuales_max = ingresos_anuales_max * 0.6
+        gastos_anuales_min = ingresos_anuales_min * 0.15
+        gastos_anuales_max = ingresos_anuales_max * 0.15
         finalprice_discount_min = (ingresos_anuales_min - gastos_anuales_min) / rentabilidad_requerida
         finalprice_discount_max = (ingresos_anuales_max - gastos_anuales_max) / rentabilidad_requerida
 
