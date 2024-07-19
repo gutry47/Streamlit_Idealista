@@ -43,10 +43,23 @@ xgb_model = XGBRegressor(
     random_state=42
 )
 
-# Entrenar el modelo XGB y RF
+# Entrenar el modelo XGB
 xgb_model.fit(X_train, y_train)
 
-# Predecir función para obtener la recomendación de inversión
+# Crear y entrenar el modelo de Random Forest con los mejores hiperparámetros
+best_rf = RandomForestRegressor(
+    n_estimators=150,
+    max_depth=30,
+    max_features=None,
+    min_samples_leaf=2,
+    min_samples_split=2,
+    random_state=42
+)
+
+# Entrenar el modelo RF
+best_rf.fit(X_train, y_train)
+
+# Función para obtener la recomendación de inversión
 def obtener_recomendacion_inversion(precio_original, precio_predicho):
     if precio_predicho > precio_original:
         return "SI"  # Inversión recomendable (verde en el mapa)
@@ -117,6 +130,9 @@ with st.sidebar:
         # Botón para aplicar filtros
         submit_button = st.form_submit_button(label='Aplicar filtros')
 
+# Barrios que usan el modelo Random Forest
+barrios_rf = ['Opañel', 'Los Ángeles', 'Los Rosales', 'Moscardó', 'Zofío']
+
 # Filtrar el dataset según los filtros seleccionados y almacenarlo en el estado de la sesión
 if submit_button:
     if 'ROOMNUMBER' in anuncios.columns:
@@ -147,8 +163,11 @@ if submit_button:
         # Preparar el DataFrame para la predicción
         anuncios_prediccion = anuncios_filtrados.drop(columns=['lon', 'lat', 'ASSETID', 'FINALPRICE_DISCOUNT'])
 
-        # Realizar la predicción con el modelo XGBoost
-        predicciones = xgb_model.predict(anuncios_prediccion)
+        # Realizar la predicción con el modelo adecuado
+        if barrio in barrios_rf:
+            predicciones = best_rf.predict(anuncios_prediccion)
+        else:
+            predicciones = xgb_model.predict(anuncios_prediccion)
 
         # Comparar las predicciones con los valores originales de FINALPRICE_DISCOUNT
         anuncios_filtrados['PREDICCION_PRECIO'] = predicciones
@@ -179,8 +198,7 @@ tabs = ["Mapa de viviendas", "Viviendas filtradas"]
 selected_tab = st.radio("Seleccionar vista", tabs)
 
 if selected_tab == "Mapa de viviendas":
-    st.header("Mapa de viviendas filtradas")
-    # Mostrar el mapa con los puntos filtrados si existe anuncios_filtrados_con_prediccion
+        # Mostrar el mapa con los puntos filtrados si existe anuncios_filtrados_con_prediccion
     if anuncios_filtrados_con_prediccion is not None and 'lat' in anuncios_filtrados_con_prediccion.columns and 'lon' in anuncios_filtrados_con_prediccion.columns:
         # Crear un mapa folium
         mymap = folium.Map(location=[40.4165, -3.70256], zoom_start=12)
@@ -204,8 +222,7 @@ if selected_tab == "Mapa de viviendas":
         folium_static(mymap)
 
 elif selected_tab == "Viviendas filtradas":
-    st.header("Viviendas filtradas")
-    # Mostrar las filas filtradas del dataset con una columna adicional "¿Inversión recomendable?"
+        # Mostrar las filas filtradas del dataset con una columna adicional "¿Inversión recomendable?"
     if anuncios_filtrados_con_prediccion is not None:
         # Ordenar por RECOMENDACION_INVERSION y diferencia porcentual
         anuncios_filtrados_con_prediccion['DIFERENCIA_PORCENTUAL'] = (anuncios_filtrados_con_prediccion['PREDICCION_PRECIO'] - anuncios_filtrados_con_prediccion['FINALPRICE_DISCOUNT']) / anuncios_filtrados_con_prediccion['FINALPRICE_DISCOUNT']
