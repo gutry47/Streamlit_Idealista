@@ -69,7 +69,7 @@ def obtener_recomendacion_inversion(precio_original, precio_predicho):
 # Título y subtítulo
 st.title("TuTecho Search")
 st.markdown(
-    '<p style="font-size:16px">Esta herramienta ha sido diseñada como herramienta personalizada de búsqueda de viviendas de potencial interés de adquisición para TuTecho</p>',
+    '<p style="font-size:16px">Esta aplicación ha sido diseñada como herramienta personalizada de búsqueda de viviendas de potencial interés de adquisición para TuTecho</p>',
     unsafe_allow_html=True
 )
 
@@ -85,7 +85,7 @@ with st.sidebar:
     with st.form("filter_form"):
         # Filtro por número de habitaciones
         num_habitaciones = st.selectbox(
-            "Número de Habitaciones", options=[1, 2, 3, 4, 5]
+            "Número de Habitaciones", options=[1, 2, 3, 4]
         )
 
         # Filtro por precio de alquiler
@@ -128,10 +128,10 @@ with st.sidebar:
         barrio = st.selectbox("Barrio", barrios)
 
         # Botón para aplicar filtros
-        submit_button = st.form_submit_button(label='Aplicar filtros')
+        submit_button = st.form_submit_button(label='Buscar viviendas')
 
 # Barrios que usan el modelo Random Forest
-barrios_rf = ['Opañel', 'Los Ángeles', 'Los Rosales', 'Moscardó', 'Zofío']
+barrios_rf = ['Opañel', 'Los Ángeles', 'Los Rosales', 'Moscardó', 'Zofío', 'Portazgo']
 
 # Filtrar el dataset según los filtros seleccionados y almacenarlo en el estado de la sesión
 if submit_button:
@@ -193,12 +193,26 @@ if submit_button:
 # Recuperar los datos filtrados del estado de la sesión
 anuncios_filtrados_con_prediccion = st.session_state.get('anuncios_filtrados_con_prediccion')
 
+# Diccionario para renombrar las columnas
+column_rename_dict = {
+    'RECOMENDACION_INVERSION': 'Recomendación de Inversión',
+    'FINALPRICE_DISCOUNT': 'Precio Actual',
+    'PREDICCION_PRECIO': 'Precio Predicho',
+    'ROOMNUMBER': 'Número de Habitaciones',
+    'BATHNUMBER': 'Número de Baños',
+    'CADCONSTRUCTIONYEAR': 'Año de Construcción',
+    'CONSTRUCTEDAREA': 'Metros Cuadrados',
+    'DISTANCE_TO_METRO': 'Distancia al Metro',
+    'DISTANCE_TO_CASTELLANA': 'Distancia a la Castellana',
+    'DISTANCE_TO_CITY_CENTER': 'Distancia al Centro'
+}
+
 # Agregar las pestañas para mostrar el mapa y la tabla filtrada
 tabs = ["Mapa de viviendas", "Viviendas filtradas"]
 selected_tab = st.radio("Seleccionar vista", tabs)
 
 if selected_tab == "Mapa de viviendas":
-        # Mostrar el mapa con los puntos filtrados si existe anuncios_filtrados_con_prediccion
+    # Mostrar el mapa con los puntos filtrados si existe anuncios_filtrados_con_prediccion
     if anuncios_filtrados_con_prediccion is not None and 'lat' in anuncios_filtrados_con_prediccion.columns and 'lon' in anuncios_filtrados_con_prediccion.columns:
         # Crear un mapa folium
         mymap = folium.Map(location=[40.4165, -3.70256], zoom_start=12)
@@ -222,15 +236,19 @@ if selected_tab == "Mapa de viviendas":
         folium_static(mymap)
 
 elif selected_tab == "Viviendas filtradas":
-        # Mostrar las filas filtradas del dataset con una columna adicional "¿Inversión recomendable?"
+    # Mostrar las filas filtradas del dataset con una columna adicional "¿Inversión recomendable?"
     if anuncios_filtrados_con_prediccion is not None:
         # Ordenar por RECOMENDACION_INVERSION y diferencia porcentual
         anuncios_filtrados_con_prediccion['DIFERENCIA_PORCENTUAL'] = (anuncios_filtrados_con_prediccion['PREDICCION_PRECIO'] - anuncios_filtrados_con_prediccion['FINALPRICE_DISCOUNT']) / anuncios_filtrados_con_prediccion['FINALPRICE_DISCOUNT']
         anuncios_filtrados_con_prediccion.sort_values(by=['RECOMENDACION_INVERSION', 'DIFERENCIA_PORCENTUAL'], ascending=[False, False], inplace=True)
 
+        # Renombrar columnas
+        anuncios_filtrados_con_prediccion.rename(columns=column_rename_dict, inplace=True)
+
         # Definir orden de columnas para mostrar
-        columns_to_display = ['RECOMENDACION_INVERSION', 'FINALPRICE_DISCOUNT', 'PREDICCION_PRECIO', 'ROOMNUMBER',
-                              'BATHNUMBER', 'CADCONSTRUCTIONYEAR', 'CONSTRUCTEDAREA', 'DISTANCE_TO_METRO',
-                              'DISTANCE_TO_CASTELLANA', 'DISTANCE_TO_CITY_CENTER']
+        columns_to_display = ['Recomendación de Inversión', 'Precio Actual', 'Precio Predicho', 'Número de Habitaciones',
+                              'Número de Baños', 'Año de Construcción', 'Metros Cuadrados', 'Distancia al Metro',
+                              'Distancia a la Castellana', 'Distancia al Centro']
 
         st.dataframe(anuncios_filtrados_con_prediccion[columns_to_display].reset_index(drop=True))
+
