@@ -69,7 +69,7 @@ def obtener_recomendacion_inversion(precio_original, precio_predicho):
 # Título y subtítulo
 st.title("TuTecho Search")
 st.markdown(
-    '<p style="font-size:16px">Esta aplicación ha sido diseñada como herramienta personalizada de búsqueda de viviendas de potencial interés de adquisición para TuTecho</p>',
+    '<p style="font-size:16px">Esta aplicación ha sido diseñada como herramienta personalizada de búsqueda de viviendas de potencial interés de adquisición para TuTêcho</p>',
     unsafe_allow_html=True
 )
 
